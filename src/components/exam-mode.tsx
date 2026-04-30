@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { QuizQuestion } from "@/lib/quiz-parser";
 import { DISPLAY_LABELS, randomShuffle } from "@/lib/shuffle";
 import { recordExam, setQuestionOutcome } from "@/lib/stats";
@@ -65,10 +65,37 @@ export function ExamMode({
     wrong: number;
     omitted: number;
     score: number;
-    percent: number;
   } | null>(null);
+  const questionNavRef = useRef<HTMLDivElement | null>(null);
 
   const current = examQuestions[currentIndex];
+
+  useEffect(() => {
+    const nav = questionNavRef.current;
+    if (!nav) return;
+    const currentButton = nav.querySelector<HTMLButtonElement>(`button[data-qindex="${currentIndex}"]`);
+    currentButton?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [currentIndex]);
+
+  if (!current) {
+    return (
+      <main className="min-h-screen min-h-dvh bg-[linear-gradient(180deg,_#fff8e8_0%,_#fffdf7_30%,_#f8fafc_100%)] px-4 py-8 pb-[env(safe-area-inset-bottom,16px)] text-slate-900">
+        <div className="mx-auto grid w-full max-w-2xl gap-4">
+          <div className="rounded-[1.5rem] border border-emerald-200 bg-white p-6 text-center shadow-[0_8px_30px_-12px_rgba(15,23,42,0.2)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">Nessuna simulazione disponibile</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Non ci sono domande da proporre</h2>
+            <p className="mt-2 text-sm text-slate-600">Hai gia recuperato tutte le domande sbagliate. Torna alla home per continuare.</p>
+            <button
+              onClick={onBack}
+              className="mt-5 min-h-[48px] rounded-full border border-slate-300 px-6 text-sm font-medium text-slate-700 active:bg-slate-50 transition"
+            >
+              ← Torna alla home
+            </button>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   function selectAnswer(label: string) {
     setAnswers((prev) => {
@@ -86,7 +113,6 @@ export function ExamMode({
     const omitted = answers.filter((a) => a === null).length;
     const wrong = Math.max(0, examQuestions.length - correct - omitted);
     const score = correct - wrong * 0.33 - omitted * 0.15;
-    const percent = Math.round((score / examQuestions.length) * 100);
 
     examQuestions.forEach((q, i) => {
       const answer = answers[i];
@@ -95,12 +121,10 @@ export function ExamMode({
     });
 
     recordExam(score, examQuestions.length, { correct, wrong, omitted });
-    setResult({ correct, wrong, omitted, score, percent });
+    setResult({ correct, wrong, omitted, score });
     onComplete();
     setSubmitted(true);
   }
-
-  if (!current) return null;
 
   // ─── Schermata risultati ───────────────────────────────────────────────────
   if (submitted) {
@@ -114,11 +138,11 @@ export function ExamMode({
         const omitted = answers.filter((a) => a === null).length;
         const wrong = Math.max(0, examQuestions.length - correct - omitted);
         const score = correct - wrong * 0.33 - omitted * 0.15;
-        const percent = Math.round((score / examQuestions.length) * 100);
-        return { correct, wrong, omitted, score, percent };
+        return { correct, wrong, omitted, score };
       })();
 
-    const passed = finalResult.percent >= contestConfig.passingScorePercent;
+    const passingScore = (contestConfig.passingScorePercent / 100) * examQuestions.length;
+    const passed = finalResult.score >= passingScore;
 
     return (
       <main className="min-h-screen min-h-dvh bg-[linear-gradient(180deg,_#fff8e8_0%,_#fffdf7_30%,_#f8fafc_100%)] px-4 py-8 pb-[env(safe-area-inset-bottom,16px)] text-slate-900">
@@ -140,10 +164,10 @@ export function ExamMode({
                 passed ? "text-emerald-900" : "text-rose-900"
               }`}
             >
-              {finalResult.percent}%
+              {finalResult.score.toFixed(2)}
             </p>
             <p className={`mt-1 text-base ${passed ? "text-emerald-800" : "text-rose-800"}`}>
-              Punteggio finale: {finalResult.score.toFixed(2)} su {examQuestions.length}
+              Punteggio finale su {examQuestions.length}
             </p>
             <p className={`mt-1 text-sm ${passed ? "text-emerald-700" : "text-rose-700"}`}>
               {finalResult.correct} corrette · {finalResult.wrong} errate · {finalResult.omitted} omesse
@@ -206,7 +230,7 @@ export function ExamMode({
   const isLast = currentIndex === examQuestions.length - 1;
 
   return (
-    <main className="min-h-screen min-h-dvh bg-[linear-gradient(180deg,_#fff8e8_0%,_#fffdf7_30%,_#f8fafc_100%)] text-slate-900">
+    <main className="min-h-screen min-h-dvh overflow-x-hidden bg-[linear-gradient(180deg,_#fff8e8_0%,_#fffdf7_30%,_#f8fafc_100%)] text-slate-900">
       {/* Header sticky */}
       <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-slate-100 bg-white/90 px-4 py-3 backdrop-blur">
         <button
@@ -263,24 +287,30 @@ export function ExamMode({
           </div>
         </article>
 
-        {/* Griglia navigazione rapida — scroll orizzontale su mobile */}
-        <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {examQuestions.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setCurrentIndex(i)}
-              className={[
-                "h-8 w-8 shrink-0 rounded-full text-xs font-medium transition active:scale-95",
-                i === currentIndex
-                  ? "bg-amber-500 text-white"
-                  : answers[i] !== null
-                    ? "bg-slate-900 text-white"
-                    : "border border-slate-300 bg-white text-slate-500",
-              ].join(" ")}
-            >
-              {i + 1}
-            </button>
-          ))}
+        {/* Navigazione rapida mobile-first: swipe orizzontale */}
+        <div
+          ref={questionNavRef}
+          className="-mx-1 w-[calc(100%+0.5rem)] overflow-x-auto overscroll-x-contain px-1 pb-1 [touch-action:pan-x] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          <div className="flex w-max snap-x snap-mandatory gap-2 pr-2">
+            {examQuestions.map((_, i) => (
+              <button
+                key={i}
+                data-qindex={i}
+                onClick={() => setCurrentIndex(i)}
+                className={[
+                  "h-8 w-8 shrink-0 snap-center rounded-full text-xs font-medium transition active:scale-95",
+                  i === currentIndex
+                    ? "bg-amber-500 text-white"
+                    : answers[i] !== null
+                      ? "bg-slate-900 text-white"
+                      : "border border-slate-300 bg-white text-slate-500",
+                ].join(" ")}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

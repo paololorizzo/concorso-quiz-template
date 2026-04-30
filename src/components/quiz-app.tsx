@@ -63,7 +63,6 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
           refreshStats();
           setMode("home");
         }}
-        onAnswer={refreshStats}
       />
     );
   }
@@ -104,7 +103,7 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
 
   const bestExam =
     stats.exams.length > 0
-      ? Math.max(...stats.exams.map((e) => Math.round((e.score / e.total) * 100)))
+      ? Math.max(...stats.exams.map((e) => e.score))
       : null;
 
   return (
@@ -202,7 +201,10 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
               { label: "Precisione", value: accuracy !== null ? `${accuracy}%` : "—" },
               { label: "Domande da ripetere", value: wrongQuestions.length.toString() },
               { label: "Simulazioni", value: stats.exams.length.toString() },
-              { label: "Miglior simulazione", value: bestExam !== null ? `${bestExam}%` : "—" },
+              {
+                label: "Miglior punteggio",
+                value: bestExam !== null ? bestExam.toFixed(2) : "—",
+              },
             ].map(({ label, value }) => (
               <div key={label} className="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
                 <p className="text-xl font-semibold text-slate-950">{value}</p>
@@ -221,7 +223,8 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
               </div>
               <div className="divide-y divide-slate-100">
                 {stats.exams.slice(0, 10).map((exam) => {
-                  const pct = Math.round((exam.score / exam.total) * 100);
+                  const passingScore = (contestConfig.passingScorePercent / 100) * exam.total;
+                  const passed = exam.score >= passingScore;
                   return (
                     <div
                       key={exam.id}
@@ -236,9 +239,9 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
                         })}
                       </span>
                       <span
-                        className={`font-semibold tabular-nums ${pct >= 60 ? "text-emerald-700" : "text-rose-700"}`}
+                        className={`font-semibold tabular-nums ${passed ? "text-emerald-700" : "text-rose-700"}`}
                       >
-                        {exam.score.toFixed(2)}/{exam.total} ({pct}%)
+                        {exam.score.toFixed(2)}/{exam.total}
                       </span>
                     </div>
                   );

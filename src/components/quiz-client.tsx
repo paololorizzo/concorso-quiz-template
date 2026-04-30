@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { QuizQuestion } from "@/lib/quiz-parser";
-import { DISPLAY_LABELS, seededShuffle, seedFromString } from "@/lib/shuffle";
+import { DISPLAY_LABELS, randomShuffle } from "@/lib/shuffle";
 import { recordPracticeAnswer, setPracticeLastAnsweredIndex, setQuestionOutcome } from "@/lib/stats";
 
 type QuizClientProps = {
@@ -22,26 +22,25 @@ export function QuizClient({
   trackProgress = true,
   modeLabel = "Allenamento libero",
 }: QuizClientProps) {
+  const [sessionQuestions] = useState<QuizQuestion[]>(() => randomShuffle(questions));
   const [currentIndex, setCurrentIndex] = useState(() => {
-    if (!questions.length) return 0;
-    return Math.min(Math.max(0, startIndex), questions.length - 1);
+    if (!sessionQuestions.length) return 0;
+    return Math.min(Math.max(0, startIndex), sessionQuestions.length - 1);
   });
   const [selectedDisplayLabel, setSelectedDisplayLabel] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [correctCount, setCorrectCount] = useState(0);
 
-  const question = questions[currentIndex];
+  const question = sessionQuestions[currentIndex];
 
   /**
-   * Ogni volta che cambia domanda, rimescola le opzioni con un seed
-   * derivato dall'indice + id, così ogni domanda ha un ordine stabile
-   * ma diverso. Calcola anche quale etichetta display è corretta.
+   * Ogni volta che cambia domanda, rimescola le opzioni in modo casuale.
+   * L'ordine resta stabile durante la singola domanda fino alla successiva.
    */
   const { shuffledOptions, correctDisplayLabel } = useMemo(() => {
     if (!question) return { shuffledOptions: [], correctDisplayLabel: null };
 
-    const seed = seedFromString(`${question.id}|${question.prompt}`);
-    const shuffled = seededShuffle(question.options, seed);
+    const shuffled = randomShuffle(question.options);
 
     const correctIndex = shuffled.findIndex(
       (opt) => opt.label === question.correctOriginalLabel,
@@ -57,10 +56,26 @@ export function QuizClient({
   }, [currentIndex, question]);
 
   if (!question) {
-    return null;
+    return (
+      <main className="min-h-screen min-h-dvh bg-[linear-gradient(180deg,_#fff8e8_0%,_#fffdf7_30%,_#f8fafc_100%)] px-4 py-8 pb-[env(safe-area-inset-bottom,16px)] text-slate-900">
+        <div className="mx-auto grid w-full max-w-2xl gap-4">
+          <div className="rounded-[1.5rem] border border-emerald-200 bg-white p-6 text-center shadow-[0_8px_30px_-12px_rgba(15,23,42,0.2)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">Sessione completata</p>
+            <h2 className="mt-2 text-2xl font-semibold text-slate-950">Nessuna domanda da mostrare</h2>
+            <p className="mt-2 text-sm text-slate-600">Hai completato tutte le domande disponibili per questa sessione.</p>
+            <button
+              onClick={onBack}
+              className="mt-5 min-h-[48px] rounded-full border border-slate-300 px-6 text-sm font-medium text-slate-700 active:bg-slate-50 transition"
+            >
+              ← Torna alla home
+            </button>
+          </div>
+        </div>
+      </main>
+    );
   }
 
-  const isLastQuestion = currentIndex === questions.length - 1;
+  const isLastQuestion = currentIndex === sessionQuestions.length - 1;
   const canEvaluate = selectedDisplayLabel !== null;
 
   function revealAnswer() {
@@ -97,7 +112,7 @@ export function QuizClient({
         ← Home
       </button>
       <span className="text-sm text-slate-600">
-        {currentIndex + 1} / {questions.length}
+        {currentIndex + 1} / {sessionQuestions.length}
       </span>
       <span className="text-sm font-semibold text-slate-900">{correctCount} ✓</span>
     </header>
