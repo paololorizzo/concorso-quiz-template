@@ -3,16 +3,25 @@
 import { useMemo, useState } from "react";
 import type { QuizQuestion } from "@/lib/quiz-parser";
 import { DISPLAY_LABELS, seededShuffle, seedFromString } from "@/lib/shuffle";
-import { recordPracticeAnswer, setPracticeLastAnsweredIndex } from "@/lib/stats";
+import { recordPracticeAnswer, setPracticeLastAnsweredIndex, setQuestionOutcome } from "@/lib/stats";
 
 type QuizClientProps = {
   questions: QuizQuestion[];
   onBack: () => void;
   onAnswer?: () => void;
   startIndex?: number;
+  trackProgress?: boolean;
+  modeLabel?: string;
 };
 
-export function QuizClient({ questions, onBack, onAnswer, startIndex = 0 }: QuizClientProps) {
+export function QuizClient({
+  questions,
+  onBack,
+  onAnswer,
+  startIndex = 0,
+  trackProgress = true,
+  modeLabel = "Allenamento libero",
+}: QuizClientProps) {
   const [currentIndex, setCurrentIndex] = useState(() => {
     if (!questions.length) return 0;
     return Math.min(Math.max(0, startIndex), questions.length - 1);
@@ -59,7 +68,10 @@ export function QuizClient({ questions, onBack, onAnswer, startIndex = 0 }: Quiz
     const correct = selectedDisplayLabel === correctDisplayLabel;
     if (correct) setCorrectCount((value) => value + 1);
     recordPracticeAnswer(correct);
-    setPracticeLastAnsweredIndex(currentIndex);
+    if (trackProgress) {
+      setPracticeLastAnsweredIndex(currentIndex);
+    }
+    setQuestionOutcome(question.id, correct);
     onAnswer?.();
     setRevealed(true);
   }
@@ -89,6 +101,10 @@ export function QuizClient({ questions, onBack, onAnswer, startIndex = 0 }: Quiz
       </span>
       <span className="text-sm font-semibold text-slate-900">{correctCount} ✓</span>
     </header>
+
+    <div className="mx-auto w-full max-w-2xl px-4 pt-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">{modeLabel}</p>
+    </div>
 
     <div className="mx-auto grid w-full max-w-2xl gap-4 px-4 py-5 pb-[calc(80px+env(safe-area-inset-bottom,16px))]">
       <article className="grid gap-4 rounded-[1.5rem] border border-amber-200/70 bg-white p-5 shadow-[0_8px_30px_-12px_rgba(15,23,42,0.2)]">

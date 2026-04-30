@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { QuizQuestion } from "@/lib/quiz-parser";
 import { DISPLAY_LABELS, randomShuffle } from "@/lib/shuffle";
-import { recordExam } from "@/lib/stats";
+import { recordExam, setQuestionOutcome } from "@/lib/stats";
 import { contestConfig } from "@/config/contest";
 
 const EXAM_SIZE = contestConfig.examQuestionCount;
@@ -45,15 +45,28 @@ type ExamModeProps = {
   questions: QuizQuestion[];
   onBack: () => void;
   onComplete: () => void;
+  modeLabel?: string;
 };
 
-export function ExamMode({ questions, onBack, onComplete }: ExamModeProps) {
+export function ExamMode({
+  questions,
+  onBack,
+  onComplete,
+  modeLabel = "Simulazione esame",
+}: ExamModeProps) {
   const examQuestions = useMemo(() => prepareExamQuestions(questions), [questions]);
   const [answers, setAnswers] = useState<(string | null)[]>(() =>
     Array(examQuestions.length).fill(null),
   );
   const [currentIndex, setCurrentIndex] = useState(0);
   const [submitted, setSubmitted] = useState(false);
+  const [result, setResult] = useState<{
+    correct: number;
+    wrong: number;
+    omitted: number;
+    score: number;
+    percent: number;
+  } | null>(null);
 
   const current = examQuestions[currentIndex];
 
@@ -66,11 +79,23 @@ export function ExamMode({ questions, onBack, onComplete }: ExamModeProps) {
   }
 
   function submit() {
-    const score = examQuestions.reduce(
+    const correct = examQuestions.reduce(
       (acc, q, i) => acc + (answers[i] === q.correctDisplayLabel ? 1 : 0),
       0,
     );
-    recordExam(score, examQuestions.length);
+    const omitted = answers.filter((a) => a === null).length;
+    const wrong = Math.max(0, examQuestions.length - correct - omitted);
+    const score = correct - wrong * 0.33 - omitted * 0.15;
+    const percent = Math.round((score / examQuestions.length) * 100);
+
+    examQuestions.forEach((q, i) => {
+      const answer = answers[i];
+      if (answer === null) return;
+      setQuestionOutcome(q.original.id, answer === q.correctDisplayLabel);
+    });
+
+    recordExam(score, examQuestions.length, { correct, wrong, omitted });
+    setResult({ correct, wrong, omitted, score, percent });
     onComplete();
     setSubmitted(true);
   }
@@ -79,12 +104,21 @@ export function ExamMode({ questions, onBack, onComplete }: ExamModeProps) {
 
   // ─── Schermata risultati ───────────────────────────────────────────────────
   if (submitted) {
-    const score = examQuestions.reduce(
-      (acc, q, i) => acc + (answers[i] === q.correctDisplayLabel ? 1 : 0),
-      0,
-    );
-    const pct = Math.round((score / examQuestions.length) * 100);
-    const passed = pct >= contestConfig.passingScorePercent;
+    const finalResult =
+      result ??
+      (() => {
+        const correct = examQuestions.reduce(
+          (acc, q, i) => acc + (answers[i] === q.correctDisplayLabel ? 1 : 0),
+          0,
+        );
+        const omitted = answers.filter((a) => a === null).length;
+        const wrong = Math.max(0, examQuestions.length - correct - omitted);
+        const score = correct - wrong * 0.33 - omitted * 0.15;
+        const percent = Math.round((score / examQuestions.length) * 100);
+        return { correct, wrong, omitted, score, percent };
+      })();
+
+    const passed = finalResult.percent >= contestConfig.passingScorePercent;
 
     return (
       <main className="min-h-screen min-h-dvh bg-[linear-gradient(180deg,_#fff8e8_0%,_#fffdf7_30%,_#f8fafc_100%)] px-4 py-8 pb-[env(safe-area-inset-bottom,16px)] text-slate-900">
@@ -106,10 +140,16 @@ export function ExamMode({ questions, onBack, onComplete }: ExamModeProps) {
                 passed ? "text-emerald-900" : "text-rose-900"
               }`}
             >
-              {pct}%
+              {finalResult.percent}%
             </p>
             <p className={`mt-1 text-base ${passed ? "text-emerald-800" : "text-rose-800"}`}>
-              {score} risposte corrette su {examQuestions.length}
+              Punteggio finale: {finalResult.score.toFixed(2)} su {examQuestions.length}
+            </p>
+            <p className={`mt-1 text-sm ${passed ? "text-emerald-700" : "text-rose-700"}`}>
+              {finalResult.correct} corrette · {finalResult.wrong} errate · {finalResult.omitted} omesse
+            </p>
+            <p className={`mt-1 text-xs ${passed ? "text-emerald-700" : "text-rose-700"}`}>
+              Formula: +1 corretta · -0.33 errata · -0.15 omessa
             </p>
           </div>
 
@@ -180,6 +220,10 @@ export function ExamMode({ questions, onBack, onComplete }: ExamModeProps) {
           {currentIndex + 1} / {examQuestions.length}
         </span>
       </header>
+
+      <div className="mx-auto w-full max-w-2xl px-4 pt-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">{modeLabel}</p>
+      </div>
 
       <div className="mx-auto grid w-full max-w-2xl gap-4 px-4 py-4 pb-[calc(80px+env(safe-area-inset-bottom,16px))]">
         {/* Progress bar */}

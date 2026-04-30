@@ -7,7 +7,7 @@ import { QuizClient } from "@/components/quiz-client";
 import { ExamMode } from "@/components/exam-mode";
 import { contestConfig } from "@/config/contest";
 
-type Mode = "home" | "practice" | "exam";
+type Mode = "home" | "practice" | "practice-wrong" | "exam" | "exam-wrong";
 
 export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
   const [mode, setMode] = useState<Mode>("home");
@@ -17,6 +17,8 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
     questions.length > 0
       ? Math.min(stats.practiceLastAnsweredIndex + 1, questions.length - 1)
       : 0;
+  const wrongQuestionSet = new Set(stats.wrongQuestionIds);
+  const wrongQuestions = questions.filter((q) => wrongQuestionSet.has(q.id));
 
   useEffect(() => {
     setStats(loadStats());
@@ -40,6 +42,23 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
       <QuizClient
         questions={questions}
         startIndex={practiceStartIndex}
+        modeLabel="Allenamento libero"
+        onBack={() => {
+          refreshStats();
+          setMode("home");
+        }}
+        onAnswer={refreshStats}
+      />
+    );
+  }
+
+  if (mode === "practice-wrong") {
+    return (
+      <QuizClient
+        questions={wrongQuestions}
+        startIndex={0}
+        trackProgress={false}
+        modeLabel="Ripeti domande sbagliate"
         onBack={() => {
           refreshStats();
           setMode("home");
@@ -53,6 +72,21 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
     return (
       <ExamMode
         questions={questions}
+        modeLabel="Simulazione esame"
+        onBack={() => {
+          refreshStats();
+          setMode("home");
+        }}
+        onComplete={refreshStats}
+      />
+    );
+  }
+
+  if (mode === "exam-wrong") {
+    return (
+      <ExamMode
+        questions={wrongQuestions}
+        modeLabel="Simulazione su domande sbagliate"
         onBack={() => {
           refreshStats();
           setMode("home");
@@ -123,6 +157,30 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
               {contestConfig.examModeDescription}
             </p>
           </button>
+
+          <button
+            onClick={() => setMode("practice-wrong")}
+            disabled={wrongQuestions.length === 0}
+            className="min-h-[120px] rounded-[1.5rem] border border-orange-200 bg-white p-5 text-left shadow-[0_8px_30px_-12px_rgba(15,23,42,0.15)] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed sm:p-7"
+          >
+            <div className="mb-3 text-2xl">🔁</div>
+            <h2 className="text-lg font-semibold text-slate-950">Ripeti domande sbagliate</h2>
+            <p className="mt-1 text-sm leading-5 text-slate-500">
+              Allenamento mirato su {wrongQuestions.length} domande ancora da recuperare.
+            </p>
+          </button>
+
+          <button
+            onClick={() => setMode("exam-wrong")}
+            disabled={wrongQuestions.length === 0}
+            className="min-h-[120px] rounded-[1.5rem] border border-orange-200 bg-white p-5 text-left shadow-[0_8px_30px_-12px_rgba(15,23,42,0.15)] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed sm:p-7"
+          >
+            <div className="mb-3 text-2xl">🧠</div>
+            <h2 className="text-lg font-semibold text-slate-950">Simulazione su errori</h2>
+            <p className="mt-1 text-sm leading-5 text-slate-500">
+              Estrazione casuale dalle domande sbagliate in precedenza.
+            </p>
+          </button>
         </div>
 
         {/* Statistiche */}
@@ -142,6 +200,7 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
             {[
               { label: "Risposte allenamento", value: stats.practiceAnswered.toString() },
               { label: "Precisione", value: accuracy !== null ? `${accuracy}%` : "—" },
+              { label: "Domande da ripetere", value: wrongQuestions.length.toString() },
               { label: "Simulazioni", value: stats.exams.length.toString() },
               { label: "Miglior simulazione", value: bestExam !== null ? `${bestExam}%` : "—" },
             ].map(({ label, value }) => (
@@ -179,7 +238,7 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
                       <span
                         className={`font-semibold tabular-nums ${pct >= 60 ? "text-emerald-700" : "text-rose-700"}`}
                       >
-                        {exam.score}/{exam.total} ({pct}%)
+                        {exam.score.toFixed(2)}/{exam.total} ({pct}%)
                       </span>
                     </div>
                   );
