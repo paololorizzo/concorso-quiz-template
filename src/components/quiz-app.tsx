@@ -42,6 +42,7 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
       <QuizClient
         questions={questions}
         startIndex={practiceStartIndex}
+        shuffleQuestions={false}
         modeLabel="Allenamento libero"
         onBack={() => {
           refreshStats();

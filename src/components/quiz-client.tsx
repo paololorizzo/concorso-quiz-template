@@ -12,6 +12,7 @@ type QuizClientProps = {
   startIndex?: number;
   trackProgress?: boolean;
   modeLabel?: string;
+  shuffleQuestions?: boolean;
 };
 
 export function QuizClient({
@@ -21,8 +22,9 @@ export function QuizClient({
   startIndex = 0,
   trackProgress = true,
   modeLabel = "Allenamento libero",
+  shuffleQuestions = true,
 }: QuizClientProps) {
-  const [sessionQuestions] = useState<QuizQuestion[]>(() => randomShuffle(questions));
+  const [sessionQuestions] = useState<QuizQuestion[]>(() => shuffleQuestions ? randomShuffle(questions) : [...questions]);
   const [currentIndex, setCurrentIndex] = useState(() => {
     if (!sessionQuestions.length) return 0;
     return Math.min(Math.max(0, startIndex), sessionQuestions.length - 1);
