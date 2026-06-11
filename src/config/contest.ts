@@ -1,5 +1,5 @@
 export const contestConfig = {
-  title: "Concorso Pubblico Infermieri Bari 2026",
+  title: "Concorso Pubblico OSS Bari 2026",
   eyebrow: "Banca dati concorso",
   metadataDescription: "Quiz interattivo da banca dati PDF per concorsi.",
   practiceModeDescription: "Risponde una alla volta, vedi subito la risposta corretta.",
