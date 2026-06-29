@@ -4,9 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { QuizQuestion } from "@/lib/quiz-parser";
 import { DISPLAY_LABELS, randomShuffle } from "@/lib/shuffle";
 import { recordExam, setQuestionOutcome } from "@/lib/stats";
-import { contestConfig } from "@/config/contest";
-
-const EXAM_SIZE = contestConfig.examQuestionCount;
 
 type ShuffledOption = {
   displayLabel: string;
@@ -20,8 +17,8 @@ type PreparedQuestion = {
   correctDisplayLabel: string;
 };
 
-function prepareExamQuestions(questions: QuizQuestion[]): PreparedQuestion[] {
-  const selected = randomShuffle(questions).slice(0, Math.min(EXAM_SIZE, questions.length));
+function prepareExamQuestions(questions: QuizQuestion[], examQuestionCount: number): PreparedQuestion[] {
+  const selected = randomShuffle(questions).slice(0, Math.min(examQuestionCount, questions.length));
 
   return selected.map((q) => {
     const shuffled = randomShuffle(q.options);
@@ -42,19 +39,28 @@ function prepareExamQuestions(questions: QuizQuestion[]): PreparedQuestion[] {
 }
 
 type ExamModeProps = {
+  testId: string;
   questions: QuizQuestion[];
+  examQuestionCount: number;
+  passingScorePercent: number;
   onBack: () => void;
   onComplete: () => void;
   modeLabel?: string;
 };
 
 export function ExamMode({
+  testId,
   questions,
+  examQuestionCount,
+  passingScorePercent,
   onBack,
   onComplete,
   modeLabel = "Simulazione esame",
 }: ExamModeProps) {
-  const examQuestions = useMemo(() => prepareExamQuestions(questions), [questions]);
+  const examQuestions = useMemo(
+    () => prepareExamQuestions(questions, examQuestionCount),
+    [questions, examQuestionCount],
+  );
   const [answers, setAnswers] = useState<(string | null)[]>(() =>
     Array(examQuestions.length).fill(null),
   );
@@ -117,10 +123,10 @@ export function ExamMode({
     examQuestions.forEach((q, i) => {
       const answer = answers[i];
       if (answer === null) return;
-      setQuestionOutcome(q.original.id, answer === q.correctDisplayLabel);
+      setQuestionOutcome(testId, q.original.id, answer === q.correctDisplayLabel);
     });
 
-    recordExam(score, examQuestions.length, { correct, wrong, omitted });
+    recordExam(testId, score, examQuestions.length, { correct, wrong, omitted });
     setResult({ correct, wrong, omitted, score });
     onComplete();
     setSubmitted(true);
@@ -141,7 +147,7 @@ export function ExamMode({
         return { correct, wrong, omitted, score };
       })();
 
-    const passingScore = (contestConfig.passingScorePercent / 100) * examQuestions.length;
+    const passingScore = (passingScorePercent / 100) * examQuestions.length;
     const passed = finalResult.score >= passingScore;
 
     return (

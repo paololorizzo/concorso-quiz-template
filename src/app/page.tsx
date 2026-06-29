@@ -1,8 +1,8 @@
 import { QuizApp } from "@/components/quiz-app";
-import { loadQuizSource } from "@/lib/quiz-parser";
+import { loadAllQuizSources } from "@/lib/quiz-parser";
+import { tests } from "@/config/contest";
 
 export default async function Home() {
-  const quizSource = await loadQuizSource();
-
-  return <QuizApp questions={quizSource.questions} />;
+  const allQuestions = await loadAllQuizSources(tests);
+  return <QuizApp allQuestions={allQuestions} />;
 }

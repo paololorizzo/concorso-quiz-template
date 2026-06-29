@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import pdf from "pdf-parse";
+import type { TestConfig } from "@/config/contest";
 
 export type QuizOption = {
   /** Etichetta originale del PDF (A/B/C). */
@@ -29,18 +30,16 @@ export type QuizSourceResult = {
   warnings: string[];
 };
 
-const PDF_RELATIVE_PATH = path.join("data", "source", "banca-dati.pdf");
-
 // Il PDF dichiara esplicitamente: "la risposta esatta è sempre la A"
 const CORRECT_LABEL = "A";
 
-let cachedResult: Promise<QuizSourceResult> | null = null;
+const cache = new Map<string, Promise<QuizSourceResult>>();
 
 function normalizeText(input: string) {
   return input
     .replace(/\r/g, "")
     .replace(/[ \t]+/g, " ")
-    .replace(/\u00a0/g, " ")
+    .replace(/ /g, " ")
     .trim();
 }
 
@@ -49,22 +48,18 @@ function normalizeText(input: string) {
  * Gestisce anche la numerazione a due cifre seguita da spazi (es. "10) ").
  */
 function splitQuestionBlocks(text: string): string[] {
-  // Separa su "\nN) " o inizio stringa seguito da "N) "
   const boundary = /(?:^|\n)(?=\d{1,4}\) )/g;
   const parts = text.split(boundary).map((s) => s.trim()).filter(Boolean);
-  // Scarta l'intestazione (non inizia con un numero)
   return parts.filter((part) => /^\d{1,4}\) /.test(part));
 }
 
 function parseBlock(block: string): QuizQuestion | null {
-  // Estrai il numero della domanda e il testo del quesito
   const questionMatch = block.match(/^(\d{1,4})\) \n?(.+?)\n(?=[A-C]\) )/s);
   if (!questionMatch) return null;
 
   const questionNumber = questionMatch[1];
   const prompt = questionMatch[2].replace(/\n/g, " ").trim();
 
-  // Estrai tutte le opzioni: righe che iniziano con "X) "
   const optionRegex = /([A-C])\) \n?(.+?)(?=\n[A-C]\) |\nID:|$)/gs;
   const options: QuizOption[] = [];
 
@@ -94,10 +89,10 @@ function parseQuestions(text: string): QuizQuestion[] {
     .filter((q): q is QuizQuestion => q !== null);
 }
 
-export async function loadQuizSource(): Promise<QuizSourceResult> {
-  if (!cachedResult) {
-    cachedResult = (async () => {
-      const sourcePath = path.join(process.cwd(), PDF_RELATIVE_PATH);
+export async function loadQuizSourceById(testId: string, pdfFilename: string): Promise<QuizSourceResult> {
+  if (!cache.has(testId)) {
+    cache.set(testId, (async () => {
+      const sourcePath = path.join(process.cwd(), "data", "source", pdfFilename);
 
       try {
         const buffer = await readFile(sourcePath);
@@ -127,12 +122,20 @@ export async function loadQuizSource(): Promise<QuizSourceResult> {
           ],
         } satisfies QuizSourceResult;
       }
-    })();
+    })());
   }
 
-  return cachedResult;
+  return cache.get(testId)!;
 }
 
-export function getExpectedPdfRelativePath() {
-  return PDF_RELATIVE_PATH;
+export async function loadAllQuizSources(
+  testConfigs: TestConfig[],
+): Promise<Record<string, QuizQuestion[]>> {
+  const entries = await Promise.all(
+    testConfigs.map(async (t) => {
+      const result = await loadQuizSourceById(t.id, t.pdfFilename);
+      return [t.id, result.questions] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
 }

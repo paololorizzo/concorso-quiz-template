@@ -6,6 +6,7 @@ import { DISPLAY_LABELS, randomShuffle } from "@/lib/shuffle";
 import { recordPracticeAnswer, setPracticeLastAnsweredIndex, setQuestionOutcome } from "@/lib/stats";
 
 type QuizClientProps = {
+  testId: string;
   questions: QuizQuestion[];
   onBack: () => void;
   onAnswer?: () => void;
@@ -16,6 +17,7 @@ type QuizClientProps = {
 };
 
 export function QuizClient({
+  testId,
   questions,
   onBack,
   onAnswer,
@@ -32,13 +34,10 @@ export function QuizClient({
   const [selectedDisplayLabel, setSelectedDisplayLabel] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [correctCount, setCorrectCount] = useState(0);
+  const [jumpInput, setJumpInput] = useState<string | null>(null);
 
   const question = sessionQuestions[currentIndex];
 
-  /**
-   * Ogni volta che cambia domanda, rimescola le opzioni in modo casuale.
-   * L'ordine resta stabile durante la singola domanda fino alla successiva.
-   */
   const { shuffledOptions, correctDisplayLabel } = useMemo(() => {
     if (!question) return { shuffledOptions: [], correctDisplayLabel: null };
 
@@ -84,13 +83,24 @@ export function QuizClient({
     if (!canEvaluate || revealed) return;
     const correct = selectedDisplayLabel === correctDisplayLabel;
     if (correct) setCorrectCount((value) => value + 1);
-    recordPracticeAnswer(correct);
+    recordPracticeAnswer(testId, correct);
     if (trackProgress) {
-      setPracticeLastAnsweredIndex(currentIndex);
+      setPracticeLastAnsweredIndex(testId, currentIndex);
     }
-    setQuestionOutcome(question.id, correct);
+    setQuestionOutcome(testId, question.id, correct);
     onAnswer?.();
     setRevealed(true);
+  }
+
+  function commitJump() {
+    if (jumpInput === null) return;
+    const num = parseInt(jumpInput, 10);
+    if (!isNaN(num) && num >= 1 && num <= sessionQuestions.length) {
+      setCurrentIndex(num - 1);
+      setSelectedDisplayLabel(null);
+      setRevealed(false);
+    }
+    setJumpInput(null);
   }
 
   function goToNextQuestion() {
@@ -113,9 +123,29 @@ export function QuizClient({
       >
         ← Home
       </button>
-      <span className="text-sm text-slate-600">
-        {currentIndex + 1} / {sessionQuestions.length}
-      </span>
+      {jumpInput !== null ? (
+        <input
+          type="number"
+          min={1}
+          max={sessionQuestions.length}
+          value={jumpInput}
+          autoFocus
+          onChange={(e) => setJumpInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") commitJump(); if (e.key === "Escape") setJumpInput(null); }}
+          onBlur={commitJump}
+          className="w-24 rounded-lg border border-amber-400 bg-white px-2 py-1 text-center text-sm text-slate-900 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          placeholder={`1–${sessionQuestions.length}`}
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setJumpInput(String(currentIndex + 1))}
+          className="min-h-[44px] px-2 text-sm text-slate-600 underline-offset-2 hover:underline active:text-slate-900 transition"
+          title="Vai a domanda…"
+        >
+          {currentIndex + 1} / {sessionQuestions.length}
+        </button>
+      )}
       <span className="text-sm font-semibold text-slate-900">{correctCount} ✓</span>
     </header>
 

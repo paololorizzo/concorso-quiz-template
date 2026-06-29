@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { contestConfig } from "@/config/contest";
+import { siteConfig } from "@/config/contest";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: contestConfig.title,
-  description: contestConfig.metadataDescription,
+  title: siteConfig.title,
+  description: siteConfig.metadataDescription,
 };
 
 export const viewport: Viewport = {

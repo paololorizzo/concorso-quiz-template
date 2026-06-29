@@ -1,95 +1,155 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { QuizQuestion } from "@/lib/quiz-parser";
-import { type Stats, emptyStats, loadStats, resetStats } from "@/lib/stats";
+import { type Stats, emptyStats, loadStats, resetStats, migrateV1Stats, loadSelectedTestId, saveSelectedTestId, clearSelectedTestId } from "@/lib/stats";
 import { QuizClient } from "@/components/quiz-client";
 import { ExamMode } from "@/components/exam-mode";
-import { contestConfig } from "@/config/contest";
+import { TestSelector } from "@/components/test-selector";
+import { tests } from "@/config/contest";
 
 type Mode = "home" | "practice" | "practice-wrong" | "exam" | "exam-wrong";
+type Screen = "select-test" | Mode;
 
-export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
-  const [mode, setMode] = useState<Mode>("home");
+export function QuizApp({ allQuestions }: { allQuestions: Record<string, QuizQuestion[]> }) {
+  const [screen, setScreen] = useState<Screen>("select-test");
+  const [activeTestId, setActiveTestId] = useState<string | null>(null);
   const [stats, setStats] = useState<Stats>(emptyStats());
+
+  const questionCounts = useMemo(
+    () => Object.fromEntries(Object.entries(allQuestions).map(([id, qs]) => [id, qs.length])),
+    [allQuestions],
+  );
+
+  useEffect(() => {
+    const saved = loadSelectedTestId();
+    if (saved && allQuestions[saved]) {
+      migrateV1Stats(saved);
+      setActiveTestId(saved);
+      setStats(loadStats(saved));
+      setScreen("home");
+    }
+  }, [allQuestions]);
+
+  const activeConfig = useMemo(
+    () => tests.find((t) => t.id === activeTestId) ?? null,
+    [activeTestId],
+  );
+
+  const questions = activeTestId ? (allQuestions[activeTestId] ?? []) : [];
+  const wrongQuestionSet = new Set(stats.wrongQuestionIds);
+  const wrongQuestions = questions.filter((q) => wrongQuestionSet.has(q.id));
 
   const practiceStartIndex =
     questions.length > 0
       ? Math.min(stats.practiceLastAnsweredIndex + 1, questions.length - 1)
       : 0;
-  const wrongQuestionSet = new Set(stats.wrongQuestionIds);
-  const wrongQuestions = questions.filter((q) => wrongQuestionSet.has(q.id));
-
-  useEffect(() => {
-    setStats(loadStats());
-  }, []);
 
   const refreshStats = useCallback(() => {
-    setStats(loadStats());
-  }, []);
+    if (!activeTestId) return;
+    setStats(loadStats(activeTestId));
+  }, [activeTestId]);
+
+  function selectTest(testId: string) {
+    migrateV1Stats(testId);
+    saveSelectedTestId(testId);
+    setActiveTestId(testId);
+    setStats(loadStats(testId));
+    setScreen("home");
+  }
+
+  function backToSelector() {
+    clearSelectedTestId();
+    setActiveTestId(null);
+    setStats(emptyStats());
+    setScreen("select-test");
+  }
 
   const handleResetHistory = useCallback(() => {
+    if (!activeTestId) return;
     const confirmed = window.confirm(
       "Vuoi davvero cancellare tutto lo storico? Questa azione non puo essere annullata.",
     );
     if (!confirmed) return;
-    resetStats();
+    resetStats(activeTestId);
     setStats(emptyStats());
-  }, []);
+  }, [activeTestId]);
 
-  if (mode === "practice") {
+  // ─── Selezione test ────────────────────────────────────────────────────────
+  if (screen === "select-test") {
+    return (
+      <TestSelector
+        tests={tests}
+        questionCounts={questionCounts}
+        onSelect={selectTest}
+      />
+    );
+  }
+
+  if (!activeConfig || !activeTestId) return null;
+
+  // ─── Modalità allenamento ──────────────────────────────────────────────────
+  if (screen === "practice") {
     return (
       <QuizClient
+        testId={activeTestId}
         questions={questions}
         startIndex={practiceStartIndex}
         shuffleQuestions={false}
         modeLabel="Allenamento libero"
         onBack={() => {
           refreshStats();
-          setMode("home");
+          setScreen("home");
         }}
         onAnswer={refreshStats}
       />
     );
   }
 
-  if (mode === "practice-wrong") {
+  if (screen === "practice-wrong") {
     return (
       <QuizClient
+        testId={activeTestId}
         questions={wrongQuestions}
         startIndex={0}
         trackProgress={false}
         modeLabel="Ripeti domande sbagliate"
         onBack={() => {
           refreshStats();
-          setMode("home");
+          setScreen("home");
         }}
       />
     );
   }
 
-  if (mode === "exam") {
+  if (screen === "exam") {
     return (
       <ExamMode
+        testId={activeTestId}
         questions={questions}
+        examQuestionCount={activeConfig.examQuestionCount}
+        passingScorePercent={activeConfig.passingScorePercent}
         modeLabel="Simulazione esame"
         onBack={() => {
           refreshStats();
-          setMode("home");
+          setScreen("home");
         }}
         onComplete={refreshStats}
       />
     );
   }
 
-  if (mode === "exam-wrong") {
+  if (screen === "exam-wrong") {
     return (
       <ExamMode
+        testId={activeTestId}
         questions={wrongQuestions}
+        examQuestionCount={activeConfig.examQuestionCount}
+        passingScorePercent={activeConfig.passingScorePercent}
         modeLabel="Simulazione su domande sbagliate"
         onBack={() => {
           refreshStats();
-          setMode("home");
+          setScreen("home");
         }}
         onComplete={refreshStats}
       />
@@ -113,15 +173,15 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
         {/* Intestazione */}
         <div className="space-y-1">
           <p className="text-xs font-medium uppercase tracking-[0.35em] text-amber-700">
-            {contestConfig.eyebrow}
+            {activeConfig.eyebrow}
           </p>
           <h1 className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-            {contestConfig.title}
+            {activeConfig.title}
           </h1>
           <p className="text-slate-500">{questions.length} domande disponibili</p>
           <div className="flex flex-wrap items-center gap-3 pt-1">
             <a
-              href={contestConfig.instagramUrl}
+              href={activeConfig.instagramUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex min-h-[40px] items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 active:bg-slate-50 transition"
@@ -129,37 +189,46 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
               <svg viewBox="0 0 24 24" aria-hidden="true" className="h-3 w-3 fill-current">
                 <path d="M7.75 2h8.5A5.76 5.76 0 0 1 22 7.75v8.5A5.76 5.76 0 0 1 16.25 22h-8.5A5.76 5.76 0 0 1 2 16.25v-8.5A5.76 5.76 0 0 1 7.75 2Zm8.5 1.8h-8.5A3.96 3.96 0 0 0 3.8 7.75v8.5a3.96 3.96 0 0 0 3.95 3.95h8.5a3.96 3.96 0 0 0 3.95-3.95v-8.5a3.96 3.96 0 0 0-3.95-3.95ZM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 1.8A3.2 3.2 0 1 0 12 15.2 3.2 3.2 0 0 0 12 8.8Zm5.4-3.15a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4Z" />
               </svg>
-              <span>{contestConfig.instagramLabel}</span>
+              <span>{activeConfig.instagramLabel}</span>
             </a>
+            {tests.length > 1 && (
+              <button
+                type="button"
+                onClick={backToSelector}
+                className="inline-flex min-h-[40px] items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 active:bg-slate-50 transition"
+              >
+                ← Cambia concorso
+              </button>
+            )}
           </div>
         </div>
 
         {/* Modalità */}
         <div className="grid gap-4 sm:grid-cols-2">
           <button
-            onClick={() => setMode("practice")}
+            onClick={() => setScreen("practice")}
             className="min-h-[120px] rounded-[1.5rem] border border-amber-200 bg-white p-5 text-left shadow-[0_8px_30px_-12px_rgba(15,23,42,0.15)] active:scale-[0.98] transition-transform sm:p-7"
           >
             <div className="mb-3 text-2xl">📚</div>
             <h2 className="text-lg font-semibold text-slate-950">Allenamento libero</h2>
             <p className="mt-1 text-sm leading-5 text-slate-500">
-              {contestConfig.practiceModeDescription}
+              {activeConfig.practiceModeDescription}
             </p>
           </button>
 
           <button
-            onClick={() => setMode("exam")}
+            onClick={() => setScreen("exam")}
             className="min-h-[120px] rounded-[1.5rem] border border-slate-200 bg-white p-5 text-left shadow-[0_8px_30px_-12px_rgba(15,23,42,0.15)] active:scale-[0.98] transition-transform sm:p-7"
           >
             <div className="mb-3 text-2xl">🎯</div>
             <h2 className="text-lg font-semibold text-slate-950">Simulazione esame</h2>
             <p className="mt-1 text-sm leading-5 text-slate-500">
-              {contestConfig.examModeDescription}
+              {activeConfig.examModeDescription}
             </p>
           </button>
 
           <button
-            onClick={() => setMode("practice-wrong")}
+            onClick={() => setScreen("practice-wrong")}
             disabled={wrongQuestions.length === 0}
             className="min-h-[120px] rounded-[1.5rem] border border-orange-200 bg-white p-5 text-left shadow-[0_8px_30px_-12px_rgba(15,23,42,0.15)] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed sm:p-7"
           >
@@ -171,7 +240,7 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
           </button>
 
           <button
-            onClick={() => setMode("exam-wrong")}
+            onClick={() => setScreen("exam-wrong")}
             disabled={wrongQuestions.length === 0}
             className="min-h-[120px] rounded-[1.5rem] border border-orange-200 bg-white p-5 text-left shadow-[0_8px_30px_-12px_rgba(15,23,42,0.15)] active:scale-[0.98] transition-transform disabled:opacity-50 disabled:cursor-not-allowed sm:p-7"
           >
@@ -224,7 +293,7 @@ export function QuizApp({ questions }: { questions: QuizQuestion[] }) {
               </div>
               <div className="divide-y divide-slate-100">
                 {stats.exams.slice(0, 10).map((exam) => {
-                  const passingScore = (contestConfig.passingScorePercent / 100) * exam.total;
+                  const passingScore = (activeConfig.passingScorePercent / 100) * exam.total;
                   const passed = exam.score >= passingScore;
                   return (
                     <div
